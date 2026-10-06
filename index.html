@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dino Run</title>
+<style>
+:root{--bg:#f7f7f7;--ink:#535353;--soft:#d0d0d0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#202124;--ink:#c8c8c8;--soft:#4a4a4a}}
+:root[data-theme="dark"]{--bg:#202124;--ink:#c8c8c8;--soft:#4a4a4a}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 "Courier New",monospace;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+canvas{width:100%;max-width:800px;height:auto;display:block;border-bottom:2px solid var(--ink)}
+.hint{text-align:center;max-width:560px}
+button{font:inherit;padding:14px 28px;border:2px solid var(--ink);background:transparent;color:var(--ink);border-radius:8px;cursor:pointer}
+button:active{background:var(--ink);color:var(--bg)}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+</style>
+</head>
+<body>
+<canvas id="c" width="800" height="240" aria-label="Dino runner game"></canvas>
+<button id="duck">Hold to duck</button>
+<p class="hint">Space, Up arrow or tap to jump. Down arrow to duck.</p>
+<script>
+const cv=document.getElementById("c"),ctx=cv.getContext("2d");
+const W=800,H=240,G=200;
+let buf=0,state="idle",dino,obs,speed,score,hi=0,frame,spawnIn,clouds,over=0;
+try{hi=+localStorage.getItem("dinohi")||0}catch(e){}
+const css=getComputedStyle(document.documentElement);
+function col(n){return css.getPropertyValue(n).trim()||"#535353"}
+function reset(){
+dino={x:50,y:G,vy:0,duck:false,w:40,h:44};
+obs=[];speed=6;score=0;frame=0;spawnIn=60;
+clouds=[{x:200,y:50},{x:520,y:80},{x:760,y:40}];
+}
+function jump(){
+if(state==="idle"||state==="over"){if(state==="over"&&over<6)return;reset();state="run";return}
+if(dino.y>=G){dino.vy=-12.5;buf=0}else{buf=8}
+}
+function setDuck(v){dino&&(dino.duck=v)}
+addEventListener("keydown",e=>{
+if(e.code==="Space"||e.code==="ArrowUp"){e.preventDefault();if(!e.repeat)jump()}
+if(e.code==="ArrowDown"){e.preventDefault();setDuck(true)}
+});
+addEventListener("keyup",e=>{if(e.code==="ArrowDown")setDuck(false)});
+cv.addEventListener("pointerdown",jump);
+const db=document.getElementById("duck");
+db.addEventListener("pointerdown",e=>{e.preventDefault();setDuck(true)});
+["pointerup","pointerleave","pointercancel"].forEach(t=>db.addEventListener(t,()=>setDuck(false)));
+function spawn(){
+if(score>300&&Math.random()<.3){
+const lv=[G-20,G-50,G-85][Math.floor(Math.random()*3)];
+obs.push({t:"p",x:W+20,y:lv,w:42,h:28});
+}else{
+const n=Math.random()<.35?2:1,h=34+Math.random()*20|0;
+obs.push({t:"c",x:W+20,y:G,w:18*n+4,h,n});
+}
+spawnIn=Math.max(40,(60+Math.random()*60)*(6/speed)+30);
+}
+function box(){
+return dino.duck&&dino.y>=G?{x:dino.x+4,y:G-24,w:50,h:22}:{x:dino.x+6,y:dino.y-dino.h+4,w:dino.w-12,h:dino.h-8};
+}
+function hit(o){
+const b=box(),ox=o.x+4,oy=o.y-o.h+4,ow=o.w-8,oh=o.h-8;
+return b.x<ox+ow&&b.x+b.w>ox&&b.y<oy+oh&&b.y+b.h>oy;
+}
+function update(){
+if(state!=="run"){if(state==="over")over++;return}
+frame++;score+=speed/40;speed=Math.min(14,6+score/200);
+dino.vy+=dino.duck&&dino.y<G?1.6:.7;dino.y+=dino.vy;
+if(dino.y>=G){dino.y=G;dino.vy=0;if(buf>0){dino.vy=-12.5;buf=0}}
+if(buf>0)buf--;
+spawnIn--;if(spawnIn<=0)spawn();
+obs.forEach(o=>o.x-=speed);
+obs=obs.filter(o=>o.x+o.w>-20);
+clouds.forEach(c=>{c.x-=speed*.2;if(c.x<-60){c.x=W+40;c.y=30+Math.random()*60}});
+if(obs.some(hit)){
+state="over";over=0;
+if(score>hi){hi=score;try{localStorage.setItem("dinohi",Math.floor(hi))}catch(e){}}
+}
+}
+function px(x,y,w,h){ctx.fillRect(Math.round(x),Math.round(y),w,h)}
+function drawDino(){
+const x=dino.x,y=dino.y,leg=Math.floor(frame/5)%2,air=y<G;
+ctx.fillStyle=col("--ink");
+if(dino.duck&&!air){
+px(x,y-22,44,16);px(x+34,y-26,20,16);px(x-8,y-20,10,8);
+ctx.fillStyle=col("--bg");px(x+46,y-23,4,4);ctx.fillStyle=col("--ink");
+px(x+10,y-6,6,6+(leg?0:-3));px(x+26,y-6,6,6+(leg?-3:0));
+}else{
+px(x+4,y-26,28,20);px(x-6,y-24,12,8);px(x+18,y-44,22,18);px(x+34,y-38,6,8);
+px(x+10,y-8,6,8-(air?0:leg?3:0));px(x+22,y-8,6,8-(air?0:leg?0:3));
+px(x+28,y-22,8,5);
+ctx.fillStyle=col("--bg");px(x+30,y-40,4,4);
+}
+}
+function drawObs(o){
+ctx.fillStyle=col("--ink");
+if(o.t==="c"){
+for(let i=0;i<o.n;i++){
+const cx=o.x+i*18,h=o.h-i*6;
+px(cx+6,o.y-h,8,h);px(cx,o.y-h*.6,6,4);px(cx,o.y-h*.6-10,4,12);px(cx+14,o.y-h*.5,6,4);px(cx+16,o.y-h*.5-10,4,12);
+}
+}else{
+const f=Math.floor(frame/10)%2;
+px(o.x+6,o.y-18,30,10);px(o.x,o.y-20,10,6);px(o.x+30,o.y-22,10,6);
+px(o.x+8,o.y-(f?30:8),18,f?12:8);
+ctx.fillStyle=col("--bg");px(o.x+4,o.y-18,3,3);
+}
+}
+function draw(){
+ctx.fillStyle=col("--bg");ctx.fillRect(0,0,W,H);
+ctx.fillStyle=col("--soft");
+clouds.forEach(c=>{px(c.x,c.y,44,8);px(c.x+8,c.y-6,24,8)});
+ctx.fillStyle=col("--ink");px(0,G,W,2);
+for(let i=0;i<20;i++){px(((i*97-frame*speed*.5)%W+W)%W,G+8+(i%3)*6,6,2)}
+obs.forEach(drawObs);
+if(dino)drawDino();else{dino={x:50,y:G,vy:0,duck:false,w:40,h:44};drawDino();dino=null}
+ctx.fillStyle=col("--ink");ctx.font="bold 18px 'Courier New',monospace";ctx.textAlign="right";
+ctx.fillText("HI "+String(Math.floor(hi)).padStart(5,"0")+"  "+String(Math.floor(score||0)).padStart(5,"0"),W-16,28);
+ctx.textAlign="center";
+if(state==="idle")ctx.fillText("Press Space or tap to start",W/2,100);
+if(state==="over"){ctx.font="bold 28px 'Courier New',monospace";ctx.fillText("GAME OVER",W/2,90);ctx.font="16px 'Courier New',monospace";ctx.fillText("Press Space or tap to restart",W/2,120)}
+}
+function loop(){update();draw();requestAnimationFrame(loop)}
+reset();dino=null;
+document.body.tabIndex=-1;
+function focusGame(){window.focus();document.body.focus({preventScroll:true})}
+focusGame();
+addEventListener("pointerdown",focusGame);
+db.addEventListener("pointerup",()=>db.blur());
+loop();
+</script>
+</body>
+</html>
